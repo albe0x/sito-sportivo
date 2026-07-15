@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-darkBg text-gray-100 min-h-screen overflow-x-hidden font-sans;
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, rgba(10, 10, 18, 1) 0%, rgba(5, 5, 10, 1) 100%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-cardBg backdrop-blur-md border border-white/10 rounded-2xl transition-all duration-300;
+  }
+  
+  .glass:hover {
+    @apply border-white/20;
+  }
+
+  .glass-interactive {
+    @apply cursor-pointer hover:bg-cardHover hover:-translate-y-1;
+  }
+}
