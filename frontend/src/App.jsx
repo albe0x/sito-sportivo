@@ -234,6 +234,7 @@ export default function App() {
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminSearch, setAdminSearch] = useState('');
   const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
+  const [availabilityFlags, setAvailabilityFlags] = useState({ blockedHours: [], dayBlocked: false });
   const [availabilityForm, setAvailabilityForm] = useState({
     area_id: 'football',
     block_date: getDateInputValue(),
@@ -279,21 +280,45 @@ export default function App() {
       });
   }, []);
 
-  // 2. Fetch taken slots when court or date changes
+  // 2. Fetch taken slots and availability blocks when court or date changes
   useEffect(() => {
-    if (!selectedAreaId || !bookingDate) return;
-    fetch(`${API_BASE}/bookings?date=${bookingDate}`)
-      .then(res => parseJsonResponse(res))
-      .then(data => {
-        if (Array.isArray(data)) {
-          // Filter bookings for the selected area
-          const slots = data
+    if (!selectedAreaId || !bookingDate) {
+      setTakenSlots([]);
+      setAvailabilityFlags({ blockedHours: [], dayBlocked: false });
+      return;
+    }
+
+    Promise.all([
+      fetch(`${API_BASE}/bookings?date=${bookingDate}`),
+      fetch(`${API_BASE}/availability?date=${bookingDate}&area_id=${selectedAreaId}`)
+    ])
+      .then(async ([bookingsRes, availabilityRes]) => {
+        const bookingsData = await parseJsonResponse(bookingsRes);
+        const availabilityData = await parseJsonResponse(availabilityRes);
+
+        if (Array.isArray(bookingsData)) {
+          const slots = bookingsData
             .filter(b => b.area_id === selectedAreaId)
             .map(b => b.start_hour);
           setTakenSlots(slots);
+        } else {
+          setTakenSlots([]);
+        }
+
+        if (availabilityData && typeof availabilityData === 'object') {
+          setAvailabilityFlags({
+            blockedHours: Array.isArray(availabilityData.blocked_hours) ? availabilityData.blocked_hours : [],
+            dayBlocked: Boolean(availabilityData.day_blocked)
+          });
+        } else {
+          setAvailabilityFlags({ blockedHours: [], dayBlocked: false });
         }
       })
-      .catch(err => console.warn('Could not fetch timeslot bookings:', err));
+      .catch(err => {
+        console.warn('Could not fetch timeslot availability:', err);
+        setTakenSlots([]);
+        setAvailabilityFlags({ blockedHours: [], dayBlocked: false });
+      });
   }, [selectedAreaId, bookingDate]);
 
   // 3. Admin Authentication Status Check
@@ -602,10 +627,8 @@ export default function App() {
   // Generate 8:00 to 22:00 timeslots
   const hourlySlots = Array.from({ length: 15 }, (_, i) => 8 + i);
   const selectedArea = areas.find(a => a.id === selectedAreaId) || DEFAULT_AREAS[0];
-  const selectedAvailability = availabilityBlocks.filter(block => block.area_id === selectedAreaId && block.block_date === bookingDate);
-  const availabilityBlockedHours = selectedAvailability.filter(block => block.block_type === 'hour').map(block => block.start_hour);
-  const availabilityDayBlocked = selectedAvailability.some(block => block.block_type === 'day');
-  const effectiveTakenSlots = Array.from(new Set([...takenSlots, ...availabilityBlockedHours]));
+  const effectiveTakenSlots = Array.from(new Set([...takenSlots, ...availabilityFlags.blockedHours]));
+  const availabilityDayBlocked = availabilityFlags.dayBlocked;
 
   // Admin filter search
   const filteredBookings = adminBookings.filter(b => {
