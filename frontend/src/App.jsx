@@ -648,10 +648,10 @@ export default function App() {
   }).length;
 
   return (
-    <div className="app-container min-h-screen flex flex-col px-4 max-w-7xl mx-auto">
+    <div className="app-container min-h-screen flex flex-col px-3 sm:px-4 max-w-7xl mx-auto pb-8 sm:pb-0">
       
       {/* 1. Header Area */}
-      <header className="flex justify-between items-center py-6 border-b border-white/10">
+      <header className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center py-4 sm:py-6 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-tr from-blue-500 to-violet-500 rounded-xl flex items-center justify-center text-white shadow-accent-glow">
             <Sparkles className="w-5 h-5 animate-pulse" />
@@ -664,7 +664,7 @@ export default function App() {
         </div>
 
         {/* Global Controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4 w-full sm:w-auto">
           {/* Language Toggle */}
           <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
             <button 
@@ -781,7 +781,7 @@ export default function App() {
           </div>
 
           {/* Booking Area Work Board */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-8 mb-10 sm:mb-16">
             
             {/* Calendar & Timeslots (Left Pane) */}
             <div className="lg:col-span-7 glass p-6 md:p-8">
@@ -815,7 +815,7 @@ export default function App() {
               </div>
 
               {/* Grid of Hours */}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
                 {availabilityDayBlocked ? (
                   <div className="col-span-full rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
                     {lang === 'it' ? 'Questa giornata è stata disattivata dall\'amministratore.' : 'This day has been disabled by the administrator.'}
@@ -831,7 +831,7 @@ export default function App() {
                       type="button"
                       disabled={isTaken}
                       onClick={() => setSelectedHour(hour)}
-                      className={`py-3.5 px-2 rounded-xl text-center flex flex-col items-center gap-1.5 transition-all duration-200 border ${
+                      className={`min-h-[54px] py-3 px-2 rounded-xl text-center flex flex-col items-center justify-center gap-1 transition-all duration-200 border touch-manipulation ${
                         isTaken 
                           ? 'bg-red-500/5 border-red-500/10 text-red-400/40 line-through cursor-not-allowed'
                           : isSelected
@@ -900,7 +900,7 @@ export default function App() {
                       placeholder={getT('namePlaceholder')}
                       value={custName}
                       onChange={(e) => setCustName(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                      className="w-full min-h-[44px] bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
                     />
                   </div>
                 </div>
@@ -917,7 +917,7 @@ export default function App() {
                       placeholder={getT('emailPlaceholder')}
                       value={custEmail}
                       onChange={(e) => setCustEmail(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                      className="w-full min-h-[44px] bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
                     />
                   </div>
                 </div>
@@ -1005,7 +1005,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !selectedHour || paymentMethod === 'card'}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-3.5 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 mt-6 shadow-lg shadow-indigo-900/40"
+                  className="w-full min-h-[48px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-3.5 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 mt-6 shadow-lg shadow-indigo-900/40 touch-manipulation"
                 >
                   {isSubmitting ? (
                     <>
@@ -1055,7 +1055,7 @@ export default function App() {
                   placeholder={lang === 'it' ? 'Inserisci username' : 'Enter username'}
                   value={adminUsername}
                   onChange={(e) => setAdminUsername(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
+                  className="w-full min-h-[44px] bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
                 />
               </div>
 
@@ -1069,7 +1069,7 @@ export default function App() {
                   placeholder="••••••••"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors font-mono"
+                  className="w-full min-h-[44px] bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors font-mono"
                 />
               </div>
 
@@ -1081,7 +1081,7 @@ export default function App() {
 
               <button
                 type="submit"
-                className="w-full bg-violet-600 hover:bg-violet-500 text-white py-3.5 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-violet-900/30"
+                className="w-full min-h-[48px] bg-violet-600 hover:bg-violet-500 text-white py-3.5 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-violet-900/30 touch-manipulation"
               >
                 <Shield className="w-4 h-4" />
                 <span>{getT('adminLoginBtn')}</span>

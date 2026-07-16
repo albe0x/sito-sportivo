@@ -3,6 +3,12 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-size: 16px;
+  }
+
   body {
     @apply bg-darkBg text-gray-100 min-h-screen overflow-x-hidden font-sans;
     background-image: 
@@ -10,6 +16,18 @@
       radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
       radial-gradient(circle at 50% 50%, rgba(10, 10, 18, 1) 0%, rgba(5, 5, 10, 1) 100%);
     background-attachment: fixed;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  * {
+    box-sizing: border-box;
   }
 }
 
