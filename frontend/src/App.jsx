@@ -19,7 +19,49 @@ import {
   Layers 
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000/api';
+const getDateInputValue = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateDisplay = (value) => {
+  if (!value) return '---';
+  const text = String(value).trim();
+  if (!text) return '---';
+
+  const dashed = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dashed) {
+    return `${dashed[3]}/${dashed[2]}/${dashed[1]}`;
+  }
+
+  const slashed = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashed) {
+    return `${slashed[1]}/${slashed[2]}/${slashed[3]}`;
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return `${String(parsed.getDate()).padStart(2, '0')}/${String(parsed.getMonth() + 1).padStart(2, '0')}/${parsed.getFullYear()}`;
+  }
+
+  return text;
+};
+
+const parseJsonResponse = async (response) => {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { error: text, parseError: true };
+  }
+};
+
+const API_BASE = typeof window !== 'undefined' && window.location.hostname.endsWith('.albe0x.com')
+  ? '/api'
+  : (import.meta.env.VITE_API_BASE || 'http://localhost:5000/api');
 
 // Localization Dictionary
 const t = {
@@ -167,9 +209,7 @@ export default function App() {
   const [selectedAreaId, setSelectedAreaId] = useState('football');
   
   // Booking States
-  const [bookingDate, setBookingDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const [bookingDate, setBookingDate] = useState(() => getDateInputValue());
   const [takenSlots, setTakenSlots] = useState([]);
   const [selectedHour, setSelectedHour] = useState(null);
   
@@ -197,7 +237,7 @@ export default function App() {
     area_id: 'football',
     user_name: '',
     user_email: '',
-    booking_date: new Date().toISOString().split('T')[0],
+    booking_date: getDateInputValue(),
     start_hour: 18,
     duration_hours: 1
   });
@@ -218,7 +258,7 @@ export default function App() {
   // 1. Fetch Sports Areas on Mount
   useEffect(() => {
     fetch(`${API_BASE}/areas`)
-      .then(res => res.json())
+      .then(res => parseJsonResponse(res))
       .then(data => {
         if (Array.isArray(data) && data.length > 0) setAreas(data);
       })
@@ -232,7 +272,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedAreaId || !bookingDate) return;
     fetch(`${API_BASE}/bookings?date=${bookingDate}`)
-      .then(res => res.json())
+      .then(res => parseJsonResponse(res))
       .then(data => {
         if (Array.isArray(data)) {
           // Filter bookings for the selected area
@@ -272,10 +312,10 @@ export default function App() {
     fetch(`${API_BASE}/admin/bookings`, {
       headers: { 'x-admin-key': currentAdminKey }
     })
-      .then(res => res.json())
+      .then(res => parseJsonResponse(res))
       .then(data => {
-        setAdminRole(data.role || inferredRole);
-        setAdminBookings(data.bookings || []);
+        setAdminRole(data?.role || inferredRole);
+        setAdminBookings(data?.bookings || []);
       })
       .catch(() => {
         setAdminBookings([]);
@@ -283,16 +323,17 @@ export default function App() {
   }, [currentAdminKey]);
 
   // Refresh admin data
-  const refreshAdminData = () => {
+  const refreshAdminData = async () => {
     if (!currentAdminKey) return;
-    fetch(`${API_BASE}/admin/bookings`, {
-      headers: { 'x-admin-key': currentAdminKey }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setAdminBookings(data.bookings || []);
-      })
-      .catch(err => console.error(err));
+    try {
+      const res = await fetch(`${API_BASE}/admin/bookings`, {
+        headers: { 'x-admin-key': currentAdminKey }
+      });
+      const data = await parseJsonResponse(res);
+      setAdminBookings(data?.bookings || []);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Submit Customer Booking & Simulated Payment
@@ -329,16 +370,16 @@ export default function App() {
         })
       });
 
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!response.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
 
-      addToast('success', lang === 'it' ? (data.message_it || data.message) : (data.message_en || data.message));
-      const bookingPayload = data.booking || {};
+      addToast('success', lang === 'it' ? (data?.message_it || data?.message) : (data?.message_en || data?.message));
+      const bookingPayload = data?.booking || {};
       setLastBookingSuccess({
         ...bookingPayload,
-        reference_id: data.reference_id || bookingPayload.reference_id || ''
+        reference_id: data?.reference_id || bookingPayload?.reference_id || ''
       });
       // Reset input form
       setCustName('');
@@ -367,13 +408,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: adminUsername, password: adminPassword })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
-      setCurrentAdminKey(data.token);
-      setAdminRole(data.role || null);
-      localStorage.setItem('admin_key', data.token);
+      setCurrentAdminKey(data?.token);
+      setAdminRole(data?.role || null);
+      localStorage.setItem('admin_key', data?.token);
       setAdminUsername('');
       setAdminPassword('');
       addToast('success', lang === 'it' ? 'Autenticazione riuscita!' : 'Authentication successful!');
@@ -396,9 +437,9 @@ export default function App() {
         method: 'DELETE',
         headers: { 'x-admin-key': currentAdminKey }
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
       addToast('success', getT('successDelete'));
       refreshAdminData();
@@ -422,9 +463,9 @@ export default function App() {
         },
         body: JSON.stringify({ price_per_hour: parseFloat(price) })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
       addToast('success', getT('successRate'));
       // Update local court rates
@@ -446,16 +487,16 @@ export default function App() {
         },
         body: JSON.stringify(manualBooking)
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
       addToast('success', lang === 'it' ? 'Prenotazione manuale inserita!' : 'Manual booking added successfully!');
       setManualBooking({
         area_id: 'football',
         user_name: '',
         user_email: '',
-        booking_date: new Date().toISOString().split('T')[0],
+        booking_date: getDateInputValue(),
         start_hour: 18,
         duration_hours: 1
       });
@@ -472,15 +513,15 @@ export default function App() {
         method: 'POST',
         headers: { 'x-admin-key': currentAdminKey }
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
-        throw new Error(lang === 'it' ? (data.error_it || data.error) : (data.error_en || data.error));
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
       }
       addToast('success', getT('successReset'));
       
       // Update local court data and table
       const areasRes = await fetch(`${API_BASE}/areas`);
-      const areasData = await areasRes.json();
+      const areasData = await parseJsonResponse(areasRes);
       if (Array.isArray(areasData)) setAreas(areasData);
       
       refreshAdminData();
@@ -504,8 +545,11 @@ export default function App() {
 
   // Calculate statistics
   const totalRevenue = adminBookings.reduce((sum, b) => sum + parseFloat(b.total_paid || 0), 0);
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayBookingsCount = adminBookings.filter(b => b.booking_date.substring(0, 10) === todayStr).length;
+  const todayStr = getDateInputValue();
+  const todayBookingsCount = adminBookings.filter(b => {
+    const bookingDateText = String(b.booking_date || '').substring(0, 10);
+    return bookingDateText === todayStr;
+  }).length;
 
   return (
     <div className="app-container min-h-screen flex flex-col px-4 max-w-7xl mx-auto">
@@ -661,7 +705,7 @@ export default function App() {
                   <input 
                     type="date"
                     value={bookingDate}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getDateInputValue()}
                     onChange={(e) => {
                       setBookingDate(e.target.value);
                       setSelectedHour(null);
@@ -1066,7 +1110,7 @@ export default function App() {
                             </span>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-medium">
-                            {b.booking_date ? b.booking_date.substring(0, 10) : '---'}
+                            {formatDateDisplay(b.booking_date)}
                           </td>
                           <td className="py-3.5 px-4 font-bold">
                             {b.start_hour.toString().padStart(2, '0')}:00
@@ -1288,7 +1332,7 @@ export default function App() {
                 </div>
                 <div>
                   <span className="text-gray-500 uppercase tracking-wider text-[9px] font-bold block">{lang === 'it' ? 'DATA' : 'DATE'}</span>
-                  <span className="font-mono font-bold text-white text-xs">{lastBookingSuccess.booking_date.substring(0, 10)}</span>
+                  <span className="font-mono font-bold text-white text-xs">{formatDateDisplay(lastBookingSuccess.booking_date)}</span>
                 </div>
                 <div>
                   <span className="text-gray-500 uppercase tracking-wider text-[9px] font-bold block">{lang === 'it' ? 'ORARIO' : 'TIME'}</span>
@@ -1313,7 +1357,7 @@ export default function App() {
                   {lang === 'it' ? 'CODICE RIFERIMENTO (FIRMATO)' : 'SIGNED REFERENCE CODE'}
                 </span>
                 <span className="font-mono text-xs font-bold text-violet-400 select-all bg-violet-500/10 border border-violet-500/30 rounded px-2 py-1.5 block tracking-wide">
-                  {lastBookingSuccess.reference_id || 'N/A'}
+                  {lastBookingSuccess.reference_id || lastBookingSuccess?.booking?.reference_id || 'N/A'}
                 </span>
               </div>
             </div>
