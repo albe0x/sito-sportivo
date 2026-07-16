@@ -62,15 +62,6 @@ Once the startup process finishes, open your browser and navigate to:
 
 ---
 
-## 🔑 Admin Access Keys
-
-To login to the Admin Dashboard (by clicking the "Admin Panel / Pannello Admin" toggle at the top right of the screen), use the following credentials:
-
-*   **Tier 1: Viewer Key**: `viewer123`
-*   **Tier 2: Manager Key (DB Alteration)**: `admin123`
-
----
-
 ## 💻 Technical Details & Local Volumes
 
 *   **Hot Reloading**: Bind volumes are mounted in `docker-compose.yml` for `./frontend` and `./backend`. Any changes you make to the code on your host machine will immediately reflect inside the container.
