@@ -59,9 +59,7 @@ const parseJsonResponse = async (response) => {
   }
 };
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname.endsWith('.albe0x.com')
-  ? '/api'
-  : (import.meta.env.VITE_API_BASE || 'http://localhost:5000/api');
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.galluzzo.albe0x.com';
 
 // Localization Dictionary
 const t = {
