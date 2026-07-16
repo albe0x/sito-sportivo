@@ -59,7 +59,7 @@ const parseJsonResponse = async (response) => {
   }
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.galluzzo.albe0x.com';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.galluzzo.albe0x.com/api';
 
 // Localization Dictionary
 const t = {
