@@ -912,7 +912,7 @@ export default function App() {
                       onClick={() => setPaymentMethod('cash')}
                       className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
                         paymentMethod === 'cash'
-                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30 shadow-md'
+                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
                           : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
                       }`}
                     >
@@ -923,7 +923,7 @@ export default function App() {
                       onClick={() => setPaymentMethod('card')}
                       className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
                         paymentMethod === 'card'
-                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30 shadow-md'
+                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
                           : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
                       }`}
                     >
