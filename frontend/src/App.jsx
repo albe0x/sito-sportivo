@@ -99,6 +99,7 @@ const t = {
     adminBookingsTitle: 'All Bookings & Slots Taken',
     adminAlterDbTitle: 'Database Operations (Tier 2)',
     adminFieldRates: 'Update Court Rates',
+    adminAvailability: 'Disable Days & Hours',
     adminManualBooking: 'Force Book Slot (Manual Entry)',
     adminResetDb: 'Reset Database to Default',
     adminResetConfirm: 'Reset Database',
@@ -163,6 +164,7 @@ const t = {
     adminBookingsTitle: 'Tutti gli Slot Occupati',
     adminAlterDbTitle: 'Operazioni Database (Tier 2)',
     adminFieldRates: 'Modifica Tariffe Campi',
+    adminAvailability: 'Disattiva Giorni e Orari',
     adminManualBooking: 'Prenotazione Manuale (Forzata)',
     adminResetDb: 'Ripristina Database',
     adminResetConfirm: 'Ripristina DB',
@@ -231,6 +233,14 @@ export default function App() {
   const [adminRole, setAdminRole] = useState(null); // 'viewer' or 'manager'
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminSearch, setAdminSearch] = useState('');
+  const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
+  const [availabilityForm, setAvailabilityForm] = useState({
+    area_id: 'football',
+    block_date: getDateInputValue(),
+    start_hour: 18,
+    block_type: 'hour',
+    reason: ''
+  });
   
   // DB Alter Forms (Admin Tier 2)
   const [rateUpdates, setRateUpdates] = useState({});
@@ -291,6 +301,7 @@ export default function App() {
     if (!currentAdminKey) {
       setAdminRole(null);
       setAdminBookings([]);
+      setAvailabilityBlocks([]);
       return;
     }
 
@@ -305,21 +316,26 @@ export default function App() {
       setCurrentAdminKey('');
       setAdminRole(null);
       setAdminBookings([]);
+      setAvailabilityBlocks([]);
       return;
     }
 
     setAdminRole(inferredRole);
 
-    fetch(`${API_BASE}/admin/bookings`, {
-      headers: { 'x-admin-key': currentAdminKey }
-    })
-      .then(res => parseJsonResponse(res))
-      .then(data => {
-        setAdminRole(data?.role || inferredRole);
-        setAdminBookings(data?.bookings || []);
+    Promise.all([
+      fetch(`${API_BASE}/admin/bookings`, { headers: { 'x-admin-key': currentAdminKey } }),
+      fetch(`${API_BASE}/admin/availability`, { headers: { 'x-admin-key': currentAdminKey } })
+    ])
+      .then(async ([bookingsRes, availabilityRes]) => {
+        const bookingsData = await parseJsonResponse(bookingsRes);
+        const availabilityData = await parseJsonResponse(availabilityRes);
+        setAdminRole(bookingsData?.role || inferredRole);
+        setAdminBookings(bookingsData?.bookings || []);
+        setAvailabilityBlocks(availabilityData?.blocks || []);
       })
       .catch(() => {
         setAdminBookings([]);
+        setAvailabilityBlocks([]);
       });
   }, [currentAdminKey]);
 
@@ -332,6 +348,11 @@ export default function App() {
       });
       const data = await parseJsonResponse(res);
       setAdminBookings(data?.bookings || []);
+      const blocksRes = await fetch(`${API_BASE}/admin/availability`, {
+        headers: { 'x-admin-key': currentAdminKey }
+      });
+      const blocksData = await parseJsonResponse(blocksRes);
+      setAvailabilityBlocks(blocksData?.blocks || []);
     } catch (err) {
       console.error(err);
     }
@@ -449,6 +470,53 @@ export default function App() {
     }
   };
 
+  const handleAvailabilitySubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_BASE}/admin/availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': currentAdminKey
+        },
+        body: JSON.stringify(availabilityForm)
+      });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
+      }
+      addToast('success', lang === 'it' ? 'Disponibilità aggiornata.' : 'Availability updated.');
+      setAvailabilityForm({
+        area_id: availabilityForm.area_id,
+        block_date: availabilityForm.block_date,
+        start_hour: 18,
+        block_type: 'hour',
+        reason: ''
+      });
+      refreshAdminData();
+    } catch (err) {
+      addToast('error', err.message);
+    }
+  };
+
+  const handleDeleteAvailabilityBlock = async (id) => {
+    if (!window.confirm(lang === 'it' ? 'Rimuovere questo blocco di disponibilità?' : 'Remove this availability block?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/availability/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-key': currentAdminKey }
+      });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(lang === 'it' ? (data?.error_it || data?.error || 'Request failed') : (data?.error_en || data?.error || 'Request failed'));
+      }
+      addToast('success', lang === 'it' ? 'Blocco rimosso.' : 'Block removed.');
+      refreshAdminData();
+    } catch (err) {
+      addToast('error', err.message);
+    }
+  };
+
   const handleUpdatePrice = async (courtId) => {
     const price = rateUpdates[courtId];
     if (!price || isNaN(price)) {
@@ -534,6 +602,10 @@ export default function App() {
   // Generate 8:00 to 22:00 timeslots
   const hourlySlots = Array.from({ length: 15 }, (_, i) => 8 + i);
   const selectedArea = areas.find(a => a.id === selectedAreaId) || DEFAULT_AREAS[0];
+  const selectedAvailability = availabilityBlocks.filter(block => block.area_id === selectedAreaId && block.block_date === bookingDate);
+  const availabilityBlockedHours = selectedAvailability.filter(block => block.block_type === 'hour').map(block => block.start_hour);
+  const availabilityDayBlocked = selectedAvailability.some(block => block.block_type === 'day');
+  const effectiveTakenSlots = Array.from(new Set([...takenSlots, ...availabilityBlockedHours]));
 
   // Admin filter search
   const filteredBookings = adminBookings.filter(b => {
@@ -721,8 +793,12 @@ export default function App() {
 
               {/* Grid of Hours */}
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                {hourlySlots.map(hour => {
-                  const isTaken = takenSlots.includes(hour);
+                {availabilityDayBlocked ? (
+                  <div className="col-span-full rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+                    {lang === 'it' ? 'Questa giornata è stata disattivata dall\'amministratore.' : 'This day has been disabled by the administrator.'}
+                  </div>
+                ) : hourlySlots.map(hour => {
+                  const isTaken = effectiveTakenSlots.includes(hour);
                   const isSelected = selectedHour === hour;
                   const displayTime = `${hour.toString().padStart(2, '0')}:00`;
 
@@ -847,7 +923,7 @@ export default function App() {
                       onClick={() => setPaymentMethod('card')}
                       className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
                         paymentMethod === 'card'
-                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30 shadow-md shadow-indigo-600/10'
+                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30 shadow-md'
                           : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
                       }`}
                     >
@@ -1189,6 +1265,103 @@ export default function App() {
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Availability Controls */}
+                    <div className="pt-4 space-y-3">
+                      <h4 className="font-bold text-gray-300 uppercase tracking-wider">{getT('adminAvailability')}</h4>
+                      <form onSubmit={handleAvailabilitySubmit} className="space-y-2.5">
+                        <div>
+                          <label className="block text-[10px] text-gray-400 uppercase mb-1">{getT('labelSelectSport')}</label>
+                          <select 
+                            value={availabilityForm.area_id}
+                            onChange={(e) => setAvailabilityForm({ ...availabilityForm, area_id: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:outline-none"
+                          >
+                            {areas.map(a => (
+                              <option key={a.id} value={a.id} className="bg-darkBg">
+                                {lang === 'it' ? a.name_it : a.name_en}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 uppercase mb-1">{getT('date')}</label>
+                            <input 
+                              type="date"
+                              required
+                              value={availabilityForm.block_date}
+                              onChange={(e) => setAvailabilityForm({ ...availabilityForm, block_date: e.target.value })}
+                              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 uppercase mb-1">{lang === 'it' ? 'Tipo' : 'Type'}</label>
+                            <select 
+                              value={availabilityForm.block_type}
+                              onChange={(e) => setAvailabilityForm({ ...availabilityForm, block_type: e.target.value })}
+                              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:outline-none"
+                            >
+                              <option value="hour">{lang === 'it' ? 'Ora' : 'Hour'}</option>
+                              <option value="day">{lang === 'it' ? 'Giorno intero' : 'Full day'}</option>
+                            </select>
+                          </div>
+                        </div>
+                        {availabilityForm.block_type === 'hour' && (
+                          <div>
+                            <label className="block text-[10px] text-gray-400 uppercase mb-1">{getT('labelSelectTime')}</label>
+                            <input 
+                              type="number"
+                              required
+                              min="8"
+                              max="22"
+                              value={availabilityForm.start_hour}
+                              onChange={(e) => setAvailabilityForm({ ...availabilityForm, start_hour: parseInt(e.target.value) })}
+                              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:outline-none text-center font-mono"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-[10px] text-gray-400 uppercase mb-1">{lang === 'it' ? 'Motivo' : 'Reason'}</label>
+                          <input 
+                            type="text"
+                            value={availabilityForm.reason}
+                            onChange={(e) => setAvailabilityForm({ ...availabilityForm, reason: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:outline-none"
+                            placeholder={lang === 'it' ? 'Es. manutenzione' : 'E.g. maintenance'}
+                          />
+                        </div>
+                        <button 
+                          type="submit"
+                          className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold p-2.5 rounded-lg transition-all"
+                        >
+                          {lang === 'it' ? 'Blocca disponibilità' : 'Block availability'}
+                        </button>
+                      </form>
+
+                      {availabilityBlocks.length > 0 && (
+                        <div className="space-y-2">
+                          {availabilityBlocks.map(block => (
+                            <div key={block.id} className="bg-white/5 border border-white/10 rounded-lg p-2.5 flex items-center justify-between gap-2">
+                              <div>
+                                <div className="font-bold text-white text-[11px]">
+                                  {lang === 'it' ? (areas.find(a => a.id === block.area_id)?.name_it || block.area_id) : (areas.find(a => a.id === block.area_id)?.name_en || block.area_id)}
+                                </div>
+                                <div className="text-[10px] text-gray-400">
+                                  {formatDateDisplay(block.block_date)} • {block.block_type === 'day' ? (lang === 'it' ? 'Giorno intero' : 'Full day') : `${String(block.start_hour).padStart(2, '0')}:00`}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteAvailabilityBlock(block.id)}
+                                className="text-red-400 hover:text-red-300 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Manual Book Slot Entry */}

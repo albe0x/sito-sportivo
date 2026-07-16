@@ -47,6 +47,18 @@ async function initDbConnection() {
     try {
       await pool.query('SELECT 1');
       console.log('Successfully connected to the database.');
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS availability_blocks (
+          id SERIAL PRIMARY KEY,
+          area_id VARCHAR(50) REFERENCES areas(id) ON DELETE CASCADE,
+          block_date DATE NOT NULL,
+          start_hour INTEGER,
+          block_type VARCHAR(20) NOT NULL DEFAULT 'hour',
+          reason TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
       
       // Dynamic migration: Ensure reference_id column exists
       await pool.query('ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reference_id VARCHAR(100)');
@@ -125,7 +137,45 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-// 3. Create a booking (Includes fake payment verification and cash options)
+// 3. Get availability blocks for a specific date (to disable whole days or hours)
+app.get('/api/availability', async (req, res) => {
+  const { date, area_id } = req.query;
+  if (!date) {
+    return res.status(400).json({ error: 'Date query parameter is required (YYYY-MM-DD)' });
+  }
+
+  try {
+    let query = `
+      SELECT id, area_id, block_date, start_hour, block_type
+      FROM availability_blocks
+      WHERE block_date = $1
+    `;
+    const params = [date];
+
+    if (area_id) {
+      query += ' AND area_id = $2';
+      params.push(area_id);
+    }
+
+    const result = await pool.query(query, params);
+    const blockedHours = result.rows
+      .filter(block => block.block_type === 'hour' && block.start_hour !== null)
+      .map(block => block.start_hour);
+    const dayBlocked = result.rows.some(block => block.block_type === 'day' && block.area_id === area_id);
+
+    res.json({
+      date,
+      area_id: area_id || null,
+      blocked_hours: blockedHours,
+      day_blocked: Boolean(area_id && dayBlocked)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server database error' });
+  }
+});
+
+// 4. Create a booking (Includes fake payment verification and cash options)
 app.post('/api/bookings', async (req, res) => {
   const { area_id, user_name, user_email, booking_date, start_hour, duration_hours, payment_info, payment_method } = req.body;
 
@@ -146,6 +196,24 @@ app.post('/api/bookings', async (req, res) => {
       });
     }
     const area = areaRes.rows[0];
+
+    const availabilityBlockRes = await pool.query(
+      `SELECT * FROM availability_blocks 
+       WHERE area_id = $1 
+         AND block_date = $2 
+         AND (
+           block_type = 'day' 
+           OR (block_type = 'hour' AND start_hour = $3)
+         )`,
+      [area_id, booking_date, start_hour]
+    );
+
+    if (availabilityBlockRes.rows.length > 0) {
+      return res.status(400).json({
+        error_en: 'This date or timeslot has been disabled by the administrator',
+        error_it: 'Questa data o fascia oraria è stata disattivata dall\'amministratore'
+      });
+    }
 
     // Check if slot is already taken
     const overlapRes = await pool.query(
@@ -268,6 +336,24 @@ app.post('/api/admin/bookings', authenticateAdmin, restrictToManager, async (req
   }
 
   try {
+    const availabilityBlockRes = await pool.query(
+      `SELECT * FROM availability_blocks 
+       WHERE area_id = $1 
+         AND block_date = $2 
+         AND (
+           block_type = 'day' 
+           OR (block_type = 'hour' AND start_hour = $3)
+         )`,
+      [area_id, booking_date, start_hour]
+    );
+
+    if (availabilityBlockRes.rows.length > 0) {
+      return res.status(400).json({
+        error_en: 'This date or timeslot has been disabled by the administrator',
+        error_it: 'Questa data o fascia oraria è stata disattivata dall\'amministratore'
+      });
+    }
+
     // Check if slot is already taken
     const overlapRes = await pool.query(
       `SELECT * FROM bookings 
@@ -320,7 +406,101 @@ app.post('/api/admin/bookings', authenticateAdmin, restrictToManager, async (req
   }
 });
 
-// 4. Tier 2: Update Field Price / Info (Alters DB)
+// 4. Tier 2: Manage availability blocks (day/hour removal)
+app.get('/api/admin/availability', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT b.*, a.name_en as area_name_en, a.name_it as area_name_it
+      FROM availability_blocks b
+      JOIN areas a ON b.area_id = a.id
+      ORDER BY b.block_date DESC, b.start_hour ASC NULLS LAST
+    `);
+    res.json({
+      role: req.adminRole,
+      blocks: result.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.json({
+      role: req.adminRole,
+      blocks: [],
+      error: 'Server database error'
+    });
+  }
+});
+
+app.post('/api/admin/availability', authenticateAdmin, restrictToManager, async (req, res) => {
+  const { area_id, block_date, start_hour, block_type, reason } = req.body;
+
+  if (!area_id || !block_date || !block_type) {
+    return res.status(400).json({ error_en: 'Area, date and type are required', error_it: 'Campo, data e tipo sono obbligatori' });
+  }
+
+  if (block_type === 'hour' && (start_hour === undefined || start_hour === null || start_hour === '')) {
+    return res.status(400).json({ error_en: 'An hour value is required for hour blocks', error_it: 'È richiesto un orario per i blocchi orari' });
+  }
+
+  try {
+    const areaRes = await pool.query('SELECT * FROM areas WHERE id = $1', [area_id]);
+    if (areaRes.rows.length === 0) {
+      return res.status(404).json({ error_en: 'Area not found', error_it: 'Campo non trovato' });
+    }
+
+    const normalizedHour = block_type === 'hour' ? Number(start_hour) : null;
+    const existingQuery = block_type === 'day'
+      ? 'SELECT * FROM availability_blocks WHERE area_id = $1 AND block_date = $2 AND block_type = $3 AND start_hour IS NULL'
+      : 'SELECT * FROM availability_blocks WHERE area_id = $1 AND block_date = $2 AND block_type = $3 AND start_hour = $4';
+    const existingParams = block_type === 'day'
+      ? [area_id, block_date, block_type]
+      : [area_id, block_date, block_type, normalizedHour];
+
+    const existingRes = await pool.query(existingQuery, existingParams);
+    if (existingRes.rows.length > 0) {
+      return res.status(409).json({
+        error_en: 'This availability block already exists',
+        error_it: 'Questo blocco di disponibilità esiste già'
+      });
+    }
+
+    const insertRes = await pool.query(
+      `INSERT INTO availability_blocks (area_id, block_date, start_hour, block_type, reason)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [area_id, block_date, normalizedHour, block_type, reason || null]
+    );
+
+    res.status(201).json({
+      success: true,
+      block: insertRes.rows[0]
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server database error' });
+  }
+});
+
+app.delete('/api/admin/availability/:id', authenticateAdmin, restrictToManager, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deleteRes = await pool.query('DELETE FROM availability_blocks WHERE id = $1 RETURNING *', [id]);
+    if (deleteRes.rows.length === 0) {
+      return res.status(404).json({
+        error_en: 'Availability block not found',
+        error_it: 'Blocco di disponibilità non trovato'
+      });
+    }
+
+    res.json({
+      success: true,
+      message_en: 'Availability block removed',
+      message_it: 'Blocco di disponibilità rimosso'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server database error' });
+  }
+});
+
+// 5. Tier 2: Update Field Price / Info (Alters DB)
 app.put('/api/admin/areas/:id', authenticateAdmin, restrictToManager, async (req, res) => {
   const { id } = req.params;
   const { price_per_hour, name_en, name_it, description_en, description_it } = req.body;
@@ -357,10 +537,11 @@ app.put('/api/admin/areas/:id', authenticateAdmin, restrictToManager, async (req
   }
 });
 
-// 5. Tier 2: Reset Database Seed (Alters DB)
+// 6. Tier 2: Reset Database Seed (Alters DB)
 app.post('/api/admin/reset-db', authenticateAdmin, restrictToManager, async (req, res) => {
   try {
-    // Delete existing bookings and recreate areas
+    // Delete existing bookings, availability blocks and recreate areas
+    await pool.query('DELETE FROM availability_blocks');
     await pool.query('DELETE FROM bookings');
     await pool.query('DELETE FROM areas');
     
@@ -403,7 +584,7 @@ app.post('/api/admin/reset-db', authenticateAdmin, restrictToManager, async (req
   }
 });
 
-// 6. Admin Username & Password Authentication endpoint
+// 7. Admin Username & Password Authentication endpoint
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
